@@ -59,6 +59,12 @@ jobs:
         run: |
           kubectl run testpod --image=localhost:5000/sample-app:latest --restart=Never -- sleep 5
           kubectl delete pod testpod
+          
+      - name: Wait for cluster to be ready
+        run: |
+          kubectl wait --for=condition=Ready node --all --timeout=180s
+          kubectl wait --for=condition=Ready pod --all --timeout=180s
+
 
       # 9️⃣ Lint Helm chart
       - name: Lint Helm chart
@@ -70,7 +76,7 @@ jobs:
           helm install sample-app ./helm/sample-app \
             --set image.repository=localhost:5000/sample-app \
             --set image.tag=latest \
-            --wait --timeout 300s
+            --wait --timeout 10m
           kubectl get pods,svc
 
       # 1️⃣1️⃣ Wait for rollout, dump logs if fails
