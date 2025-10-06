@@ -12,9 +12,9 @@ spec:
       labels:
         app: sample-app
     spec:
-      imagepullpolicy: IfNotPresent
       containers:
         - name: sample-app
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 5000
