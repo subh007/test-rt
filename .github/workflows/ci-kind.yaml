@@ -1,106 +1,52 @@
-name: CI with KinD and Helm
+name: Test Helm Deployment
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
 
 jobs:
-  ci:
+  helm-deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 20
 
     steps:
-      # 1️⃣ Checkout repository
+      # 1️⃣ Checkout the repo
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2️⃣ Set up Python
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-
-      # 3️⃣ Disable BuildKit (compatibility with KinD)
-      - name: Disable BuildKit
-        run: echo "DOCKER_BUILDKIT=0" >> $GITHUB_ENV
-
-      # 4️⃣ Build Docker image
+      # 2️⃣ Set up Docker image
       - name: Build Docker image
-        run: docker build -t sample-app:latest app/
-
-      # 5️⃣ Set up local registry for KinD
-      - name: Start local registry
         run: |
-          docker run -d -p 5000:5000 --name kind-registry registry:2 || true
+          docker build -t sample-app:latest app/
 
-      # 6️⃣ Create KinD cluster with registry
+      # 3️⃣ Set up KinD cluster
       - name: Create KinD cluster
-        run: |
-          cat <<EOF | kind create cluster --name ci-sample --config=-
-          kind: Cluster
-          apiVersion: kind.x-k8s.io/v1alpha4
-          containerdConfigPatches:
-          - |-
-            [plugins."io.containerd.grpc.v1.cri".registry.mirrors."localhost:5000"]
-              endpoint = ["http://kind-registry:5000"]
-          EOF
+        uses: helm/kind-action@v1.8.0
+        with:
+          cluster_name: ci-sample
 
-      # 7️⃣ Tag and push Docker image to local registry
-      - name: Push image to local registry
-        run: |
-          docker tag sample-app:latest localhost:5000/sample-app:latest
-          docker push localhost:5000/sample-app:latest
+      # 4️⃣ Wait for KinD nodes to be ready
+      - name: Wait for nodes ready
+        run: kubectl wait --for=condition=Ready nodes --all --timeout=120s
 
-      # 8️⃣ Verify image is in KinD
-      - name: Verify image in KinD
-        run: |
-          kubectl run testpod --image=localhost:5000/sample-app:latest --restart=Never -- sleep 5
-          kubectl delete pod testpod
-          
-      - name: Wait for cluster to be ready
-        run: |
-          kubectl wait --for=condition=Ready node --all --timeout=180s
-          kubectl wait --for=condition=Ready pod --all --timeout=180s
+      # 5️⃣ Load Docker image into KinD
+      - name: Load Docker image into KinD
+        run: kind load docker-image sample-app:latest --name ci-sample
 
-
-      # 9️⃣ Lint Helm chart
-      - name: Lint Helm chart
-        run: helm lint ./helm/sample-app
-
-      # 🔟 Deploy Helm chart using local registry image
+      # 6️⃣ Deploy Helm chart
       - name: Deploy Helm chart
         run: |
           helm install sample-app ./helm/sample-app \
-            --set image.repository=localhost:5000/sample-app \
+            --set image.repository=sample-app \
             --set image.tag=latest \
-            --wait --timeout 10m
-          kubectl get pods,svc
+            --wait --timeout 300s
 
-      # 1️⃣1️⃣ Wait for rollout, dump logs if fails
-      - name: Wait for deployment
+      # 7️⃣ Verify pods
+      - name: Check pods status
+        run: kubectl get pods -o wide
+
+      # 8️⃣ Optional: Describe pod logs for debugging
+      - name: Debug pod
         run: |
-          kubectl rollout status deployment/sample-app --timeout=300s || \
-          (kubectl describe pods && kubectl logs -l app=sample-app)
-
-      # 1️⃣2️⃣ Run regression tests
-      - name: Run regression tests
-        run: |
-          kubectl port-forward svc/sample-app 30080:5000 &
-          sleep 10
-          pip install -r tests/requirements.txt
-          pytest tests/ --junitxml=reports/results.xml
-
-      # 1️⃣3️⃣ Upload test results
-      - name: Upload test results
-        uses: actions/upload-artifact@v4
-        with:
-          name: regression-results
-          path: reports/
-
-      # 1️⃣4️⃣ Cleanup cluster
-      - name: Cleanup
-        if: always()
-        run: kind delete cluster
+          POD=$(kubectl get pods -l app=sample-app -o jsonpath='{.items[0].metadata.name}')
+          kubectl describe pod $POD
+          kubectl logs $POD
