@@ -13,10 +13,11 @@ jobs:
     timeout-minutes: 30
 
     steps:
+      # 1️⃣ Checkout code
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 1️⃣ Setup Python environment
+      # 2️⃣ Setup Python
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -27,12 +28,12 @@ jobs:
           cd app
           pip install -r requirements.txt
 
-      # 2️⃣ Create a Docker image for the app
+      # 3️⃣ Build Docker image
       - name: Build Docker image
         run: |
           docker build -t sample-app:latest app/
 
-      # 3️⃣ Setup Kubernetes cluster with KinD
+      # 4️⃣ Create KinD cluster
       - name: Setup KinD cluster
         uses: helm/kind-action@v1
         with:
@@ -42,20 +43,24 @@ jobs:
       - name: Verify cluster
         run: kubectl get nodes
 
-      # 4️⃣ Load image into KinD
+      # 5️⃣ Load Docker image into KinD
       - name: Load image into KinD
         run: kind load docker-image sample-app:latest --name ci-sample
 
-      # 5️⃣ Deploy using Helm
+      # 6️⃣ (Optional) Lint Helm chart
+      - name: Lint Helm chart
+        run: helm lint ./helm/sample-app
+
+      # 7️⃣ Deploy using Helm
       - name: Deploy Helm chart
         run: |
-          helm install sample-app helm/sample-app \
+          helm install sample-app ./helm/sample-app \
             --set image.repository=sample-app \
             --set image.tag=latest
           kubectl rollout status deployment/sample-app --timeout=120s
           kubectl get svc,pods
 
-      # 6️⃣ Run regression tests
+      # 8️⃣ Run regression tests
       - name: Run regression tests
         run: |
           kubectl port-forward svc/sample-app 30080:5000 &
@@ -63,7 +68,7 @@ jobs:
           pip install -r tests/requirements.txt
           pytest tests/ --junitxml=reports/results.xml
 
-      # 7️⃣ Upload test results
+      # 9️⃣ Upload test reports
       - name: Upload test results
         uses: actions/upload-artifact@v4
         with:
