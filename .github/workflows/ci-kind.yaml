@@ -1,0 +1,71 @@
+name: Deploy & Test in KinD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-deploy-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 1️⃣ Setup Python environment
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install app dependencies
+        run: |
+          cd app
+          pip install -r requirements.txt
+
+      # 2️⃣ Create a Docker image for the app
+      - name: Build Docker image
+        run: |
+          docker build -t sample-app:latest app/
+
+      # 3️⃣ Setup Kubernetes cluster with KinD
+      - name: Setup KinD cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: ci-sample
+          wait: 90s
+
+      - name: Verify cluster
+        run: kubectl get nodes
+
+      # 4️⃣ Load image into KinD
+      - name: Load image into KinD
+        run: kind load docker-image sample-app:latest --name ci-sample
+
+      # 5️⃣ Deploy using Helm
+      - name: Deploy Helm chart
+        run: |
+          helm install sample-app helm/sample-app \
+            --set image.repository=sample-app \
+            --set image.tag=latest
+          kubectl rollout status deployment/sample-app --timeout=120s
+          kubectl get svc,pods
+
+      # 6️⃣ Run regression tests
+      - name: Run regression tests
+        run: |
+          kubectl port-forward svc/sample-app 30080:5000 &
+          sleep 10
+          pip install -r tests/requirements.txt
+          pytest tests/ --junitxml=reports/results.xml
+
+      # 7️⃣ Upload test results
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: regression-results
+          path: reports/
