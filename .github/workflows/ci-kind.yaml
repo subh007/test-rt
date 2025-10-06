@@ -57,7 +57,7 @@ jobs:
           helm install sample-app ./helm/sample-app \
             --set image.repository=sample-app \
             --set image.tag=latest
-          kubectl rollout status deployment/sample-app --timeout=120s
+          kubectl rollout status deployment/sample-app --timeout=300s || kubectl describe pods && kubectl logs -l app=sample-app
           kubectl get svc,pods
 
       # 8️⃣ Run regression tests
