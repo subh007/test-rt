@@ -44,9 +44,29 @@ jobs:
       - name: Check pods status
         run: kubectl get pods -o wide
 
+      # 1️⃣2️⃣ Run regression tests
+      - name: Run regression tests
+        run: |
+          kubectl port-forward svc/sample-app 30080:5000 &
+          sleep 10
+          pip install -r tests/requirements.txt
+          pytest tests/ --junitxml=reports/results.xml
+
+      # 1️⃣3️⃣ Upload test results
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: regression-results
+          path: reports/
+
       # 8️⃣ Optional: Describe pod logs for debugging
       - name: Debug pod
         run: |
           POD=$(kubectl get pods -l app=sample-app -o jsonpath='{.items[0].metadata.name}')
           kubectl describe pod $POD
           kubectl logs $POD
+
+      # 1️⃣4️⃣ Cleanup cluster
+      - name: Cleanup
+        if: always()
+        run: kind delete cluster --name ci-sample
