@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-s3
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mock-s3
+  template:
+    metadata:
+      labels:
+        app: mock-s3
+    spec:
+      containers:
+        - name: mountebank
+          # official mountebank image (no custom Dockerfile)
+          image: bbyars/mountebank:2.9.1
+          # run mb pointing at the mounted config file
+          args:
+            - "start"
+            - "--configfile"
+            - "/imposters/s3-mock.json"
+            - "--allowInjection"
+            - "--loglevel"
+            - "info"
+          ports:
+            - name: admin
+              containerPort: 2525
+            - name: mock
+              containerPort: 8080
+          volumeMounts:
+            - name: imposters
+              mountPath: /imposters
+          readinessProbe:
+            httpGet:
+              path: /info
+              port: 2525
+            initialDelaySeconds: 2
+            periodSeconds: 5
+      volumes:
+        - name: imposters
+          configMap:
+            name: mock-s3-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-s3
+spec:
+  selector:
+    app: mock-s3
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+    - name: admin
+      port: 2525
+      targetPort: 2525

@@ -1,0 +1,29 @@
+{
+  "port": 8080,
+  "protocol": "http",
+  "name": "mock-s3",
+  "stubs": [
+    {
+      "predicates": [
+        { "equals": { "method": "GET", "path": "/test-bucket/sample.txt" } }
+      ],
+      "responses": [
+        {
+          "is": {
+            "statusCode": 200,
+            "headers": { "Content-Type": "application/octet-stream" },
+            "body": "fake s3 content"
+          }
+        }
+      ]
+    },
+    {
+      "predicates": [
+        { "equals": { "method": "PUT", "path": "/test-bucket/upload.txt" } }
+      ],
+      "responses": [
+        { "is": { "statusCode": 200, "body": "upload successful" } }
+      ]
+    }
+  ]
+}
